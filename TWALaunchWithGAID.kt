@@ -1,27 +1,21 @@
-package com.example.packagename
-
-import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
-import com.google.android.gms.ads.identifier.AdvertisingIdClient
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-
 class LauncherActivity : AppCompatActivity() {
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+    var mClient: CustomTabsClient? = null
 
-        // Other setup stuff like View and layout goes here ...
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
         lifecycleScope.launch(Dispatchers.IO) {     // Launches a coroutine in the IO dispatcher and gets GA_ID
             retrieveGAID()?.let { gaid ->
                 launch(Dispatchers.Main) {
-                    launchTWA(gaid)
+                    CustomTabsClient.bindCustomTabsService(
+                        this@LauncherActivity,
+                        "com.android.chrome",
+                        getConnection("https://domain.example?gps_adid=$gaid")
+                    );
                 }
             }
-
         }
-
     }
 
     private fun retrieveGAID(): String? {   // To retrieve GA_ID using AdvertisingIdClient dependency
@@ -34,10 +28,24 @@ class LauncherActivity : AppCompatActivity() {
         }
     }
 
+    private fun getConnection(url: String): CustomTabsServiceConnection {
+        return object : CustomTabsServiceConnection() {
+            override fun onServiceDisconnected(componentName: ComponentName) {
+                mClient = null
+            }
 
-    private fun launchTWA(gaid: String) {
-        val url = "https://domain.example?gps_adid=$gaid"  // Replace with your actual URL
-
-        // Launch TWA with URL here ...
+            override fun onCustomTabsServiceConnected(
+                name: ComponentName,
+                client: CustomTabsClient
+            ) {
+                mClient = client
+                mClient!!.warmup(0)
+                val customTabsSession: CustomTabsSession =
+                    mClient!!.newSession(CustomTabsCallback()) ?: return
+                val intentBuilder = TrustedWebActivityIntentBuilder(Uri.parse(url))
+                val intent = intentBuilder.build(customTabsSession)
+                intent.launchTrustedWebActivity(this@LauncherActivity)
+            }
+        }
     }
 }
